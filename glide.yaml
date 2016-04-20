@@ -1,0 +1,13 @@
+package: github.com/sportsru/ios-sender-http2
+import:
+- package: github.com/BurntSushi/toml
+- package: github.com/bitly/go-hostpool
+- package: github.com/nsqio/go-nsq
+  ref: v1.0.5
+- package: github.com/sideshow/apns2
+  # TODO:
+  # ref: <add here stable version>
+  subpackages:
+  - certificate
+  - payload
+- package: gopkg.in/inconshreveable/log15.v2
