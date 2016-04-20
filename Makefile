@@ -23,7 +23,7 @@ BUILD_FLAGS := ${RACE_FLAG} ${LDFLAGS}
 DISABLED_LINTERS := -Dgotype -Ddeadcode -Daligncheck -Dstructcheck
 
 install: Makefile
-	${GO_ENV} go install -v ${BUILD_FLAGS} github.com/sportsru/ios-sender
+	${GO_ENV} go install -v ${BUILD_FLAGS} github.com/sportsru/ios-sender-http2
 
 generate:
 	go generate
@@ -72,5 +72,5 @@ tools-extra-update:
 
 dep-update:
 	@echo "Save dependencies"
-	${GO_ENV} glide update
+	${GO_ENV} glide up
 
