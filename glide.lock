@@ -1,0 +1,42 @@
+hash: ba7480127a79ef220e1a2114c1260a4c2ffef9cdc805ce940dd2ad94d0ab8bf5
+updated: 2016-04-22T16:20:11.179707625+03:00
+imports:
+- name: github.com/bitly/go-hostpool
+  version: d0e59c22a56e8dadfed24f74f452cea5a52722d2
+- name: github.com/BurntSushi/toml
+  version: bbd5bb678321a0d6e58f1099321dfa73391c1b6f
+- name: github.com/mattn/go-colorable
+  version: 9cbef7c35391cca05f15f8181dc0b18bc9736dbb
+- name: github.com/mattn/go-isatty
+  version: 56b76bdf51f7708750eac80fa38b952bb9f32639
+- name: github.com/mreiferson/go-snappystream
+  version: 028eae7ab5c4c9e2d1cb4c4ca1e53259bbe7e504
+  subpackages:
+  - snappy-go
+- name: github.com/nsqio/go-nsq
+  version: cef6982c1150617a77539847950ca63774f0e48c
+- name: github.com/sideshow/apns2
+  version: 729daff3d4e45239f3b584580aa408572737c5b1
+  subpackages:
+  - certificate
+  - payload
+- name: golang.org/x/crypto
+  version: 7b428712abe956d0e9e1e9a01e163fb6c7171438
+  subpackages:
+  - pkcs12
+  - pkcs12/internal/rc2
+- name: golang.org/x/net
+  version: 815d315ead425c4365077d904a2331ee9e179820
+  subpackages:
+  - http2
+  - http2/hpack
+- name: golang.org/x/sys
+  version: f64b50fbea64174967a8882830d621a18ee1548e
+  subpackages:
+  - unix
+- name: gopkg.in/inconshreveable/log15.v2
+  version: b105bd37f74e5d9dc7b6ad7806715c7a2b83fd3f
+  subpackages:
+  - stack
+  - term
+devImports: []
