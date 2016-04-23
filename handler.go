@@ -155,11 +155,11 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 				errLogMethod = h.L.Warn
 				errText = "The device token is no longer active for the topic"
 				// FIXME: add helper with JSON encoding & error handling
-				h.SendFeedback(j.AppInfo.Token, msgCtx)
+				go h.SendFeedback(j.AppInfo.Token, msgCtx)
 			} else if res.StatusCode == 400 && res.Reason == "BadDeviceToken" {
 				errText = "Bad device token"
 				// FIXME: add helper with JSON encoding & error handling
-				h.SendFeedback(j.AppInfo.Token, msgCtx)
+				go h.SendFeedback(j.AppInfo.Token, msgCtx)
 			}
 			// TODO: deliberate resent on 503
 			// https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/APNsProviderAPI.html#//apple_ref/doc/uid/TP40008194-CH101-SW18
