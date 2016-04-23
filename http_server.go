@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "expvar"
+	"expvar"
 	_ "net/http/pprof"
 
 	"github.com/sportsru/ios-sender-http2/config"
@@ -24,6 +24,10 @@ type WebServer struct {
 // inspired by https://github.com/hoisie/web/blob/master/server.go
 func (s *WebServer) Run(addr string) error {
 	initHandlers(s)
+	expvar.Publish("Goroutines", expvar.Func(func() interface{} {
+		return runtime.NumGoroutine()
+	}))
+
 	sock, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
