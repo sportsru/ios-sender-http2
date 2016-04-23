@@ -36,7 +36,7 @@ type APNSappConf struct {
 	Name       string
 	KeyOpen    string `toml:"key_open"`
 	KeyPrivate string `toml:"key_private"`
-	Sandbox    bool
+	// Sandbox    bool
 }
 
 // GetNSQLogLevel converts log level string to appropriate nsq.LogLevel

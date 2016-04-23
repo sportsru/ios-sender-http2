@@ -26,13 +26,6 @@ var hubStat = expvar.NewMap("APNSconections")
 // (should be redefined at build phase)
 var VERSION = "1.0-UnknownBuild"
 
-// MessageProducer produce message consumer with nsq.Handler
-// 1. get nsq.Handler interface on input
-// 2. initialize consumer and returns it
-// type MessageProducer interface {
-// 	RunWithHandler(h nsq.Handler) *nsq.Consumer
-// }
-
 // NsqLogLevelLocked boxing together mutex and current log level value
 type NsqLogLevelLocked struct {
 	logLevel    string
@@ -51,7 +44,7 @@ type Hub struct {
 	// FIXME: rename Producer to smth more clean & precise (apnsProducer?)
 	//Producer MessageProducer
 
-	NsqSrc *NSQSource
+	//NsqSrc *NSQSource
 	// Nsq fields
 	NsqFeedbackProducer *PublishHandler
 	// nsq consumer object
@@ -89,54 +82,6 @@ type HubMessagesStat struct {
 	skip       int64
 	send       int64
 	sendUniq   int64
-}
-
-// NSQpush json struct of awaited data from NSQ topic
-type NSQpush struct {
-	Extra       extraField   `json:"extra"`
-	PayloadAPNS payloadField `json:"payload_apns"`
-	AppInfo     appInfoField `json:"nsq_to_nsq"`
-	Message     string       `json:"notification_message"`
-	DbRes       dbResField   `json:"db_res"`
-}
-
-type appInfoField struct {
-	Topic         string
-	AppBundleName string `json:"app_bundle_id"`
-	Token         string
-	Sandbox       bool
-}
-
-type dbResField struct {
-	Timestamp int64
-}
-
-type payloadField struct {
-	Sound string
-	Badge int
-}
-
-type extraField struct {
-	EventID int32 `json:"event_id"`
-	SportID int32 `json:"sport_id"`
-	Type    string
-}
-
-type payloadExtraField struct {
-	EventID  int32  `json:"event_id"`
-	SportID  int32  `json:"sport_id"`
-	FlagType string `json:"flagType"`
-	Version  int32  `json:"v"`
-}
-
-// NSQSource NSQ Topic connection config
-type NSQSource struct {
-	Topic       string
-	Channel     string
-	LookupAddrs []string
-	NsqdAddrs   []string
-	MaxInFlight int
-	Concurrency int
 }
 
 var (
@@ -333,10 +278,6 @@ func (h *Hub) SendFeedback(token string, ctx []interface{}) {
 	if err != nil {
 		h.L.Error("send on feedback topic failed", ctx...)
 		return
-	}
-	if len(ctx)%2 == 1 {
-		fmt.Printf("Odd context num: %v\n", len(ctx))
-		fmt.Printf("ODD CTX => <<%+v>>\n", ctx)
 	}
 	h.L.Info("send on feedback ok", ctx...)
 }

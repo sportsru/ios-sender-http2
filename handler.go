@@ -12,6 +12,44 @@ import (
 	"github.com/sportsru/ios-sender-http2/apnsproxy"
 )
 
+// NSQpush json struct of awaited data from NSQ topic
+type NSQpush struct {
+	Extra       extraField   `json:"extra"`
+	PayloadAPNS payloadField `json:"payload_apns"`
+	AppInfo     appInfoField `json:"nsq_to_nsq"`
+	Message     string       `json:"notification_message"`
+	DbRes       dbResField   `json:"db_res"`
+}
+
+type appInfoField struct {
+	Topic         string
+	AppBundleName string `json:"app_bundle_id"`
+	Token         string
+	Sandbox       bool
+}
+
+type dbResField struct {
+	Timestamp int64
+}
+
+type payloadField struct {
+	Sound string
+	Badge int
+}
+
+type extraField struct {
+	EventID int32 `json:"event_id"`
+	SportID int32 `json:"sport_id"`
+	Type    string
+}
+
+type payloadExtraField struct {
+	EventID  int32  `json:"event_id"`
+	SportID  int32  `json:"sport_id"`
+	FlagType string `json:"flagType"`
+	Version  int32  `json:"v"`
+}
+
 // HandleMessage process NSQ messages
 // more info: https://godoc.org/github.com/nsqio/go-nsq#HandlerFunc.HandleMessage
 func (h *Hub) HandleMessage(m *nsq.Message) error {
