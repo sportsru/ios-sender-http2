@@ -62,9 +62,9 @@ func (s *WebServer) HandleNSQLogLevel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	ll.logLevelNSQ = loglevel
-	// s.nc.consumer.SetLogger(nsqDefaultLogger, loglevel)
-	// s.nc.loglevel = level
+	s.hub.NsqConsumer.SetLogger(nsqDefaultLogger, loglevel)
 
 	llNSQset := fmt.Sprintf("Set NSQ Consumer log level to \"%s\"\n", strings.ToUpper(level))
 	log.Println(llNSQset)

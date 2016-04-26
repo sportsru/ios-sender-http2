@@ -343,6 +343,10 @@ func (h *Hub) ActivateMessageProducers() {
 	h.L.Debug("NSQ connected to", logCtx...)
 }
 
+func (h *Hub) SetNSQLogLevel() {
+	h.NsqConsumer.SetLogger(nsqDefaultLogger, h.LogLevelLocked.logLevelNSQ)
+}
+
 func LogAndDieShort(l log15.Logger, err error) {
 	l.Error(err.Error())
 	panic(err)
