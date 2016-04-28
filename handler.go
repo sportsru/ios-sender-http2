@@ -50,17 +50,61 @@ type payloadExtraField struct {
 	Version  int32  `json:"v"`
 }
 
-// HandleMessage process NSQ messages
-// more info: https://godoc.org/github.com/nsqio/go-nsq#HandlerFunc.HandleMessage
 func (h *Hub) HandleMessage(m *nsq.Message) error {
 	var err error
+	start := time.Now()
+	res, err := h.sendMessage(m)
+	if err != nil {
+		if ctxErr, ok := err.(ErrorWithContext); ok {
+			h.L.Error(ctxErr.Msg, ctxErr.Ctx...)
+		} else {
+			h.L.Error(err.Error())
+		}
+	}
+	if res != nil {
+		ts := time.Since(start)
+		h.Metrics.Update(ts, res.App, res.State)
+		h.L.Info("time", []interface{}{
+			"app", res.App,
+			"id", res.Cnt,
+			"time", fmt.Sprintf("%v", float64(ts)/float64(time.Millisecond)),
+		}...)
 
-	stat := h.MessagesStat
-	counter := atomic.AddInt64(&stat.total, 1)
+	}
+	//m.Finish()
+	return nil
+}
 
+// HandleMessage process NSQ messages
+// more info: https://godoc.org/github.com/nsqio/go-nsq#HandlerFunc.HandleMessage
+func (h *Hub) HandleMessageOld(m *nsq.Message) error {
+	var err error
+	res, err := h.sendMessage(m)
+	if err != nil {
+		if ctxErr, ok := err.(ErrorWithContext); ok {
+			h.L.Error(ctxErr.Msg, ctxErr.Ctx...)
+		} else {
+			h.L.Error(err.Error())
+		}
+	}
+	if res != nil {
+		h.L.Info("res != nil")
+	}
+	//m.Finish()
+	return nil
+}
+
+type PushResult struct {
+	Cnt   int64
+	App   string
+	State string
+}
+
+func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
+	var err error
 	// TODO: if *debug {
-	h.L.Debug("handle NSQ message", "counter", counter)
-	defer h.L.Debug("finished NSQ message", "counter", counter)
+	// h.L.Debug("handle NSQ message", "counter", counter)
+	// defer h.L.Debug("finished NSQ message", "counter", counter)
 	// }
 	m.DisableAutoResponse()
 
@@ -68,13 +112,19 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 	j := &NSQpush{}
 	err = json.Unmarshal(m.Body, &j)
 	if err != nil {
-		h.L.Error("failed to parse JSON: "+err.Error(), "body", string(m.Body))
-		atomic.AddInt64(&stat.drop, 1)
-		m.Finish()
-		return nil
+		//h.L.Error("failed to parse JSON: "+err.Error(), "body", string(m.Body))
+		return nil, ErrorWithContext{
+			Msg: "failed to parse JSON: " + err.Error(),
+			Ctx: []interface{}{"body", string(m.Body)},
+		}
 	}
 
+	counter := atomic.AddInt64(&h.PushCounter, 1)
 	name := j.AppInfo.AppBundleName
+	pushRes := &PushResult{
+		App: name,
+		Cnt: counter,
+	}
 	// TODO: add support of
 	// if j.AppInfo.Sandbox {
 	// 	name = name + "-dev"
@@ -84,14 +134,16 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 	conn, ok := h.Consumers[name]
 	if !ok {
 		m.Finish()
-		atomic.AddInt64(&stat.skip, 1)
 		h.L.Debug("appname not found, skip message", "appname", name)
-		// MAYBE: add stat for unknown apps?
-		return nil
+		// TODO: move states ti Consts
+		pushRes.State = "app_not_found"
+		return pushRes, ErrorWithContext{
+			Msg: "application name not found",
+			Ctx: []interface{}{"name", name},
+		}
 	}
-	cStat := conn.Stat
 
-	// // Prepare logging context
+	// Prepare logging context
 	msgCtx := []interface{}{
 		"id", counter,
 		"app", name,
@@ -106,9 +158,7 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 	if delta > 0 {
 		m.Finish()
 
-		atomic.AddInt64(&cStat.Drop, 1)
-		atomic.AddInt64(&stat.drop, 1)
-
+		pushRes.State = "ttl_is_over"
 		msgTTLCtx := append(msgCtx, []interface{}{
 			"TTL", h.ProducerTTL,
 			"timestamp", jTs,
@@ -116,7 +166,7 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 			"body", string(m.Body),
 		}...)
 		h.L.Warn("message TTL is over", msgTTLCtx...)
-		return nil
+		return pushRes, nil
 	}
 
 	// create Notify object
@@ -137,15 +187,19 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 		"payload", string(payJSON),
 	}...)
 
+	// TODO: refactor this mess
 	var res *apns2.Response
 	msg := "message sent OK"
-	if !*notSend {
+	if *notSend {
+		msg = "message sent to /dev/null OK"
+		pushRes.State = "NULL"
+	} else {
 		res, err = conn.Send(notification)
-		// _ = res
 		msgCtx = append(msgCtx, "result", res)
 		var errText string
 		errLogMethod := h.L.Error
 		if err != nil {
+			pushRes.State = "failed"
 			errText = "message send failed APNS Error: " + err.Error()
 		} else if res.StatusCode != 200 {
 			err = errors.New(fmt.Sprintf("status code %v != 200", res.StatusCode))
@@ -161,6 +215,8 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 				// FIXME: add helper with JSON encoding & error handling
 				go h.SendFeedback(j.AppInfo.Token, msgCtx)
 			}
+
+			pushRes.State = "failed_" + fmt.Sprintf("%v", res.StatusCode)
 			// TODO: deliberate resent on 503
 			// https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/APNsProviderAPI.html#//apple_ref/doc/uid/TP40008194-CH101-SW18
 		}
@@ -168,20 +224,13 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 		if err != nil {
 			m.Finish()
 
-			atomic.AddInt64(&cStat.Drop, 1)
-			atomic.AddInt64(&stat.drop, 1)
 			errLogMethod(errText, msgCtx...)
-			return nil
+			return pushRes, nil
 		}
-		atomic.AddInt64(&cStat.Send, 1)
-		atomic.AddInt64(&stat.send, 1)
-	} else {
-		atomic.AddInt64(&cStat.Skip, 1)
-		atomic.AddInt64(&stat.skip, 1)
-		msg = "message sent to /dev/null OK"
 	}
+	pushRes.State = "sent"
 	h.L.Info(msg, msgCtx...)
 
 	m.Finish()
-	return nil
+	return pushRes, nil
 }

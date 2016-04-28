@@ -4,8 +4,6 @@ import (
 	"expvar"
 	_ "net/http/pprof"
 
-	"github.com/sportsru/ios-sender-http2/config"
-
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +11,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/sportsru/ios-sender-http2/config"
 )
 
 // WebServer stores global state of web server
@@ -27,6 +27,8 @@ func (s *WebServer) Run(addr string) error {
 	expvar.Publish("Goroutines", expvar.Func(func() interface{} {
 		return runtime.NumGoroutine()
 	}))
+
+	http.Handle("/prom", s.hub.Metrics.getHandler())
 
 	sock, err := net.Listen("tcp", addr)
 	if err != nil {

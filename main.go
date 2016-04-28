@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"expvar"
 	"flag"
 	"fmt"
 	"log"
@@ -19,8 +18,6 @@ import (
 	nsq "github.com/nsqio/go-nsq"
 	"gopkg.in/inconshreveable/log15.v2"
 )
-
-var hubStat = expvar.NewMap("APNSconections")
 
 // VERSION application version
 // (should be redefined at build phase)
@@ -40,19 +37,17 @@ type NsqLogLevelLocked struct {
 type Hub struct {
 	// all connections to APNS (per application bundle)
 	Consumers map[string]*apnsproxy.Client
-	// interface for consume messages from NSQ and produce it further
-	// FIXME: rename Producer to smth more clean & precise (apnsProducer?)
-	//Producer MessageProducer
 
-	//NsqSrc *NSQSource
-	// Nsq fields
+	// NsqFeedbackProducer - publisher on feedback topic
 	NsqFeedbackProducer *PublishHandler
 	// nsq consumer object
 	NsqConsumer    *nsq.Consumer //*nsq.Consumer
 	LogLevelLocked *NsqLogLevelLocked
 
-	// global hub statistics
-	MessagesStat *HubMessagesStat
+	// PushCounter unique message id (on proccess level)
+	PushCounter int64
+	// global Hub statistics
+	Metrics *PushMetrics
 	// config from toml file
 	Config *config.TomlConfig
 
@@ -66,22 +61,9 @@ type Hub struct {
 	sync.RWMutex
 }
 
-// XXX: check logLvl necessarity
 type logcontext struct {
 	hostname string
 	handler  log15.Handler
-}
-
-// HubMessagesStat global messages stat
-type HubMessagesStat struct {
-	total      int64
-	totalUniq  int64
-	resend     int64
-	resendUniq int64
-	drop       int64
-	skip       int64
-	send       int64
-	sendUniq   int64
 }
 
 var (
@@ -191,7 +173,6 @@ func (h *Hub) InitWithConfig(cfg config.TomlConfig) {
 
 		connections[appCfg.Name] = client
 		//TODO: err = testAPNS(client)
-		hubStat.Set(appCfg.Name, client.Stat)
 		if err != nil {
 			h.L.Error("APNS client test failed"+err.Error(), "app", appCfg.Name)
 			errorsCnt++
@@ -212,7 +193,7 @@ func (h *Hub) InitWithConfig(cfg config.TomlConfig) {
 	}
 
 	h.Consumers = connections
-	h.MessagesStat = &HubMessagesStat{}
+	h.Metrics = NewPushMetrics()
 
 	h.Config = &cfg
 	h.ProducerTTL = parseTTLtoSeconds(cfg.NSQ.TTL)
@@ -240,7 +221,7 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case <-h.NsqConsumer.StopChan:
-			h.L.Info("hub stopped", "stat:", hubStat.String())
+			h.L.Info("hub stopped")
 			return
 		case sig := <-sigChan:
 			h.L.Debug("Got stop signal", "num:", sig.String())
@@ -272,7 +253,6 @@ func (h *Hub) SendFeedback(token string, ctx []interface{}) {
 		h.L.Info("NsqFeedbackProducer not set. Skip", "token", token)
 		return
 	}
-	//ctx = append(ctx, []interface{}{"token", token}...)
 	json := `{ "platform": "APNS", "token_list": ["` + token + `"] }`
 	err := h.NsqFeedbackProducer.HandleMessage(h.Config.NSQ.FeedbackTopic, []byte(json))
 	if err != nil {
@@ -298,7 +278,6 @@ func (h *Hub) CreateFeedbackProducer() {
 }
 
 func (h *Hub) ActivateMessageProducers() {
-	//ns := h.Produce
 	hcfgNsq := h.Config.NSQ
 	concurrency := hcfgNsq.Concurrency
 	if concurrency <= 0 {
