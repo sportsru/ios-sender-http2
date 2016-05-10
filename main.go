@@ -164,11 +164,10 @@ func (h *Hub) InitWithConfig(cfg config.TomlConfig) {
 	connections := make(map[string]*apnsproxy.Client)
 	for nick, appCfg := range cfg.APNSapp {
 		_ = nick
-		client := apnsproxy.NewClient(appCfg.Name, appCfg.Name)
-		err = client.LoadCertAndKey(appCfg.KeyOpen, appCfg.KeyPrivate)
+		cert := apnsproxy.LoadCertAndKey(appCfg.KeyOpen, appCfg.KeyPrivate)
+		client := apnsproxy.NewClient(appCfg.Name, cert, true)
 		clientLog := log15.New("host", h.logctx.hostname, "app", appCfg.Name)
 		clientLog.SetHandler(h.logctx.handler)
-
 		client.L = clientLog
 
 		connections[appCfg.Name] = client

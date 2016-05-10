@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"time"
 
@@ -69,26 +70,6 @@ func (h *Hub) HandleMessage(m *nsq.Message) error {
 			"id", res.Cnt,
 			"time", fmt.Sprintf("%v", float64(ts)/float64(time.Millisecond)),
 		}...)
-
-	}
-	//m.Finish()
-	return nil
-}
-
-// HandleMessage process NSQ messages
-// more info: https://godoc.org/github.com/nsqio/go-nsq#HandlerFunc.HandleMessage
-func (h *Hub) HandleMessageOld(m *nsq.Message) error {
-	var err error
-	res, err := h.sendMessage(m)
-	if err != nil {
-		if ctxErr, ok := err.(ErrorWithContext); ok {
-			h.L.Error(ctxErr.Msg, ctxErr.Ctx...)
-		} else {
-			h.L.Error(err.Error())
-		}
-	}
-	if res != nil {
-		h.L.Info("res != nil")
 	}
 	//m.Finish()
 	return nil
@@ -145,11 +126,11 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 
 	// Prepare logging context
 	msgCtx := []interface{}{
-		"id", counter,
-		"app", name,
+		"counter", counter,
+		// "app", name,
 		"token", j.AppInfo.Token,
 	}
-	h.L.Debug("start process message", msgCtx...)
+	conn.L.Debug("start process message", msgCtx...)
 
 	// Check TTL
 	nowUnix := time.Now().UTC().Unix()
@@ -165,7 +146,7 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 			"delta", delta,
 			"body", string(m.Body),
 		}...)
-		h.L.Warn("message TTL is over", msgTTLCtx...)
+		conn.L.Warn("message TTL is over", msgTTLCtx...)
 		return pushRes, nil
 	}
 
@@ -188,49 +169,85 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 	}...)
 
 	// TODO: refactor this mess
-	var res *apns2.Response
-	msg := "message sent OK"
 	if *notSend {
-		msg = "message sent to /dev/null OK"
 		pushRes.State = "NULL"
-	} else {
-		res, err = conn.Send(notification)
-		msgCtx = append(msgCtx, "result", res)
-		var errText string
-		errLogMethod := h.L.Error
-		if err != nil {
-			pushRes.State = "failed"
-			errText = "message send failed APNS Error: " + err.Error()
-		} else if res.StatusCode != 200 {
-			err = errors.New(fmt.Sprintf("status code %v != 200", res.StatusCode))
-			//errLogMethod = h.L.Warn
-			errText = "message send result with issues"
-			if res.StatusCode == 410 {
-				errLogMethod = h.L.Warn
-				errText = "The device token is no longer active for the topic"
-				// FIXME: add helper with JSON encoding & error handling
-				go h.SendFeedback(j.AppInfo.Token, msgCtx)
-			} else if res.StatusCode == 400 && res.Reason == "BadDeviceToken" {
-				errText = "Bad device token"
-				// FIXME: add helper with JSON encoding & error handling
-				go h.SendFeedback(j.AppInfo.Token, msgCtx)
-			}
+		conn.L.Info("message sent to /dev/null OK", msgCtx...)
+		m.Finish()
+		return pushRes, nil
+	}
 
-			pushRes.State = "failed_" + fmt.Sprintf("%v", res.StatusCode)
-			// TODO: deliberate resent on 503
-			// https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/APNsProviderAPI.html#//apple_ref/doc/uid/TP40008194-CH101-SW18
-		}
+	var res *apns2.Response
+	res, err = conn.Send(notification)
+	msgCtx = append(msgCtx, "result", res)
 
-		if err != nil {
+	if err != nil {
+		if err, ok := err.(net.Error); ok && err.Timeout() {
+			pushRes.State = "timeout"
+		} else {
 			m.Finish()
-
-			errLogMethod(errText, msgCtx...)
+			conn.L.Error("message send failed APNS Error: "+err.Error(), msgCtx...)
+			pushRes.State = "failed"
 			return pushRes, nil
 		}
+	} else if res.StatusCode >= 500 {
+		err = errors.New(fmt.Sprintf("5xx status code (%v)", res.StatusCode))
+		pushRes.State = "code_" + fmt.Sprintf("%v", res.StatusCode)
 	}
-	pushRes.State = "sent"
-	h.L.Info(msg, msgCtx...)
 
+	// resent on timeouts and 5xx errors
+	// - https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/APNsProviderAPI.html#//apple_ref/doc/uid/TP40008194-CH101-SW18
+	if err != nil {
+		if m.Attempts > 2 {
+			m.Finish()
+			conn.L.Error(
+				fmt.Sprintf("message send failed APNS Error: %s on attempt %v", err.Error(), m.Attempts),
+				msgCtx...)
+			pushRes.State = "failed_" + pushRes.State
+			return pushRes, nil
+		}
+
+		conn.L.Warn(
+			fmt.Sprintf("Requeue attempt %v - APNS Error: %v", m.Attempts, err.Error()),
+			msgCtx...)
+		pushRes.State = "requeue_" + pushRes.State
+		m.RequeueWithoutBackoff(time.Second)
+		return pushRes, nil
+	}
+
+	if res.StatusCode != 200 {
+		// err = errors.New(fmt.Sprintf("status code %v != 200", res.StatusCode))
+		errLogMethod := h.L.Error
+		errText := "message send result with issues"
+		if res.StatusCode == 410 {
+			errLogMethod = h.L.Warn
+			errText = "The device token is no longer active for the topic"
+			// FIXME: add helper with JSON encoding & error handling
+			go h.SendFeedback(j.AppInfo.Token, msgCtx)
+		} else if res.StatusCode == 400 && res.Reason == "BadDeviceToken" {
+			errText = "Bad device token"
+			// FIXME: add helper with JSON encoding & error handling
+			go h.SendFeedback(j.AppInfo.Token, msgCtx)
+		}
+		pushRes.State = "failed_" + fmt.Sprintf("%v", res.StatusCode)
+		//fmt.Sprintf("status code %v != 200", res.StatusCode)
+
+		errLogMethod(errText, msgCtx...)
+		m.Finish()
+		return pushRes, nil
+	}
+
+	// if err != nil {
+	// 	m.Finish()
+
+	// 	errLogMethod(errText, msgCtx...)
+	// 	return pushRes, nil
+	// }
+
+	pushRes.State = "sent"
+	if m.Attempts > 1 {
+		pushRes.State = "requeue_sent"
+	}
+	conn.L.Info("message sent OK", msgCtx...)
 	m.Finish()
 	return pushRes, nil
 }

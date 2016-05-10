@@ -17,10 +17,10 @@ type PushMetrics struct {
 
 func defaultHistBuckets() []float64 {
 	return []float64{
-		float64(time.Millisecond) / 2,     // 0.5 ms
-		float64(time.Millisecond) * 2,     // 2ms
-		float64(time.Millisecond) * 10,    // 10ms
-		float64(time.Millisecond) * 50,    // 50ms
+		// float64(time.Millisecond) / 2,     // 0.5 ms
+		// float64(time.Millisecond) * 2,     // 2ms
+		// float64(time.Millisecond) * 10,    // 10ms
+		// float64(time.Millisecond) * 50,    // 50ms
 		float64(time.Millisecond) * 200,   // 200ms
 		float64(time.Millisecond) * 500,   // 500ms
 		float64(time.Millisecond) * 1000,  // 1s
@@ -62,7 +62,7 @@ func NewPushMetrics() *PushMetrics {
 
 	pushCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "apns_pushcount",
-		Help: "Total number of times an error occured scraping a MySQL.",
+		Help: "Total number of pushes",
 	}, []string{"app", "state"})
 	prometheus.MustRegister(pushCounter)
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"expvar"
+	// debug/pprof
 	_ "net/http/pprof"
 
 	"fmt"
