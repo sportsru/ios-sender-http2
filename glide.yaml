@@ -3,11 +3,14 @@ import:
 - package: github.com/BurntSushi/toml
 - package: github.com/bitly/go-hostpool
 - package: github.com/nsqio/go-nsq
-  ref: v1.0.5
+- package: github.com/prometheus/client_golang
+  subpackages:
+  - prometheus
 - package: github.com/sideshow/apns2
-  # TODO:
-  # ref: <add here stable version>
   subpackages:
   - certificate
   - payload
+- package: golang.org/x/net
+  subpackages:
+  - http2
 - package: gopkg.in/inconshreveable/log15.v2
