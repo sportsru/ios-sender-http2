@@ -10,7 +10,7 @@ import (
 type PushMetrics struct {
 	// TODO: remove all?
 	all prometheus.Histogram
-	//
+	// Prometheus types
 	His *prometheus.HistogramVec
 	Cnt *prometheus.CounterVec
 }

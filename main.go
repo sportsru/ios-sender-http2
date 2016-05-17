@@ -165,7 +165,16 @@ func (h *Hub) InitWithConfig(cfg config.TomlConfig) {
 	for nick, appCfg := range cfg.APNSapp {
 		_ = nick
 		cert := apnsproxy.LoadCertAndKey(appCfg.KeyOpen, appCfg.KeyPrivate)
-		client := apnsproxy.NewClient(appCfg.Name, cert, true)
+		cc := apnsproxy.ClientConfig{
+			Topic: appCfg.Name,
+			ConnectionCfg: apnsproxy.ConnectionConfig{
+				TLSCert:             cert,
+				RequestTimeout:      cfg.NetCfg.RequestTimeout.Duration,
+				ConnectTimeout:      cfg.NetCfg.ConnectTimeout.Duration,
+				TLSHandshakeTimeout: cfg.NetCfg.TLSHandshakeTimeout.Duration,
+			},
+		}
+		client := apnsproxy.NewClient(&cc)
 		clientLog := log15.New("host", h.logctx.hostname, "app", appCfg.Name)
 		clientLog.SetHandler(h.logctx.handler)
 		client.L = clientLog

@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"time"
 
 	nsq "github.com/nsqio/go-nsq"
 )
@@ -11,6 +12,35 @@ type TomlConfig struct {
 	APNS    APNSConf               `toml:"APNS"`
 	APNSapp map[string]APNSappConf `toml:"APNS-app"`
 	NSQ     NsqConf                `toml:"nsq"`
+	NetCfg  NetConfig              `toml:"network"`
+}
+
+type NetConfig struct {
+	NetTimeouts `toml:"timeouts"`
+}
+
+type NetTimeouts struct {
+	RequestTimeout      duration `toml:"request"`
+	ConnectTimeout      duration `toml:"connect"`
+	TLSHandshakeTimeout duration `toml:"tls_handshake"`
+}
+
+type duration struct {
+	time.Duration
+}
+
+func (d *duration) UnmarshalText(text []byte) error {
+	var err error
+	d.Duration, err = time.ParseDuration(string(text))
+	return err
+}
+
+func parseTTLtoSeconds(s string) int64 {
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		panic(err)
+	}
+	return int64(dur.Seconds())
 }
 
 // NsqConf NSQ configuration section

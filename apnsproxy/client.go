@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -19,11 +18,32 @@ import (
 
 // GatewayClient mapped on one APNS tcp Gateway connection
 type Client struct {
-	// Name string
 	L log15.Logger
 
 	Topic string
 	APNS  *apns2.Client
+}
+
+type ClientConfig struct {
+	Topic   string
+	Sandbox bool
+
+	ConnectionCfg ConnectionConfig
+}
+
+type ConnectionConfig struct {
+	TLSCert tls.Certificate
+	// HttpRequestTimeout sets net/http Client.Timeout
+	// «a time limit for requests .. includes connection time, any redirects, and reading the response body»
+	// (https://golang.org/pkg/net/http/#Client)
+	RequestTimeout time.Duration
+	// DialTimeout sets net Dialer.Timeout
+	// «maximum amount of time a dial will wait for a connect to complete.»
+	// https://golang.org/pkg/net/#Dialer
+	ConnectTimeout time.Duration
+	// TLSHandshakeTimeout https://golang.org/pkg/net/http/#Transport
+	//  «specifies the maximum amount of time waiting to»
+	TLSHandshakeTimeout time.Duration
 }
 
 func NewNoification(token string) *apns2.Notification {
@@ -34,37 +54,50 @@ func NewPayload() *payload.Payload {
 	return payload.NewPayload()
 }
 
-func NewClient(topic string, cert tls.Certificate, prod bool) *Client {
-	host := apns2.DefaultHost
-	if prod {
+func NewClient(conf *ClientConfig) *Client {
+	host := apns2.HostDevelopment
+	if !conf.Sandbox {
 		host = apns2.HostProduction
 	}
 	return &Client{
 		// Name:  name,
-		Topic: topic,
+		Topic: conf.Topic,
 		APNS: &apns2.Client{
-			HTTPClient:  newHttpClient(cert),
-			Certificate: cert,
+			HTTPClient:  newHttpClient(conf.ConnectionCfg),
+			Certificate: conf.ConnectionCfg.TLSCert,
 			Host:        host,
 		},
 	}
 }
 
-// newHttpClient tuned version of NewClient
-func newHttpClient(certificate tls.Certificate) *http.Client {
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{certificate},
+func setConnectionDefaults(conf ConnectionConfig) ConnectionConfig {
+	if int64(conf.RequestTimeout) == 0 {
+		conf.RequestTimeout = 5 * time.Second
 	}
-	if len(certificate.Certificate) > 0 {
+	if int64(conf.ConnectTimeout) == 0 {
+		conf.ConnectTimeout = 5 * time.Second
+	}
+	if int64(conf.TLSHandshakeTimeout) == 0 {
+		conf.TLSHandshakeTimeout = 5 * time.Second
+	}
+	return conf
+}
+
+// newHttpClient tuned version of NewClient
+func newHttpClient(conf ConnectionConfig) *http.Client {
+	conf = setConnectionDefaults(conf)
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{conf.TLSCert},
+	}
+	if len(conf.TLSCert.Certificate) > 0 {
 		tlsConfig.BuildNameToCertificate()
 	}
 	transport := &http.Transport{
-		//Proxy: ProxyFromEnvironment,
 		Dial: (&net.Dialer{
-			Timeout: 5 * time.Second,
+			Timeout: conf.ConnectTimeout,
 			//KeepAlive: 24 * time.Hour,
 		}).Dial,
-		TLSHandshakeTimeout: 5 * time.Second,
+		TLSHandshakeTimeout: conf.TLSHandshakeTimeout,
 		TLSClientConfig:     tlsConfig,
 		//ExpectContinueTimeout: 1 * time.Second,
 		//DisableCompression: true,
@@ -72,11 +105,11 @@ func newHttpClient(certificate tls.Certificate) *http.Client {
 	if err := http2.ConfigureTransport(transport); err != nil {
 		panic(err)
 	}
-	log.Println("Init Client{}-+-")
+
+	//log.Println("Init Client{}-+-")
 	return &http.Client{
 		Transport: transport,
-		// not sure about it
-		Timeout: 5 * time.Second,
+		Timeout:   conf.RequestTimeout,
 	}
 }
 
