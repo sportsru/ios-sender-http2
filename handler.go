@@ -107,9 +107,9 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 		Cnt: counter,
 	}
 	// TODO: add support of
-	// if j.AppInfo.Sandbox {
-	// 	name = name + "-dev"
-	// }
+	if j.AppInfo.Sandbox {
+		name = name + "-dev"
+	}
 
 	// Check Application name
 	conn, ok := h.Consumers[name]

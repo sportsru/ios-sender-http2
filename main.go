@@ -161,32 +161,44 @@ func (h *Hub) InitWithConfig(cfg config.TomlConfig) {
 		errorsCnt int
 	)
 
+	// map of 'app.name' => APNSclient & 'app.name-dev' => APNSclient
 	connections := make(map[string]*apnsproxy.Client)
 	for nick, appCfg := range cfg.APNSapp {
 		_ = nick
 		cert := apnsproxy.LoadCertAndKey(appCfg.KeyOpen, appCfg.KeyPrivate)
-		cc := apnsproxy.ClientConfig{
-			Topic: appCfg.Name,
-			ConnectionCfg: apnsproxy.ConnectionConfig{
-				TLSCert:             cert,
-				RequestTimeout:      cfg.NetCfg.RequestTimeout.Duration,
-				ConnectTimeout:      cfg.NetCfg.ConnectTimeout.Duration,
-				TLSHandshakeTimeout: cfg.NetCfg.TLSHandshakeTimeout.Duration,
-			},
-		}
-		client := apnsproxy.NewClient(&cc)
-		clientLog := log15.New("host", h.logctx.hostname, "app", appCfg.Name)
-		clientLog.SetHandler(h.logctx.handler)
-		client.L = clientLog
 
-		connections[appCfg.Name] = client
-		//TODO: err = testAPNS(client)
-		if err != nil {
-			h.L.Error("APNS client test failed"+err.Error(), "app", appCfg.Name)
-			errorsCnt++
-			continue
+		connCfg := apnsproxy.ConnectionConfig{
+			TLSCert:             cert,
+			RequestTimeout:      cfg.NetCfg.RequestTimeout.Duration,
+			ConnectTimeout:      cfg.NetCfg.ConnectTimeout.Duration,
+			TLSHandshakeTimeout: cfg.NetCfg.TLSHandshakeTimeout.Duration,
 		}
-		clientLog.Info("connection OK")
+
+		for i := 0; i < 2; i++ {
+			var isSandbox bool
+			key := appCfg.Name
+			if i == 1 {
+				key += "-dev"
+				isSandbox = true
+			}
+			cc := apnsproxy.ClientConfig{
+				Topic:         appCfg.Name,
+				Sandbox:       isSandbox,
+				ConnectionCfg: connCfg,
+			}
+			client := apnsproxy.NewClient(&cc)
+			clientLog := log15.New("host", h.logctx.hostname, "app", appCfg.Name)
+			clientLog.SetHandler(h.logctx.handler)
+			client.L = clientLog
+			connections[key] = client
+		}
+		//TODO: err = testAPNS(client)
+		// if err != nil {
+		// 	h.L.Error("APNS client test failed"+err.Error(), "app", appCfg.Name)
+		// 	errorsCnt++
+		// 	continue
+		// }
+		// clientLog.Info("connection OK")
 	}
 	if *onlyTestAPNS {
 		os.Exit(errorsCnt)
