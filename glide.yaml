@@ -11,6 +11,8 @@ import:
   - certificate
   - payload
 - package: golang.org/x/net
+# fixes https://github.com/Masterminds/glide/issues/432
+  version: 6acef71eb69611914f7a30939ea9f6e194c78172
   subpackages:
   - http2
 - package: gopkg.in/inconshreveable/log15.v2

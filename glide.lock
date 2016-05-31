@@ -1,5 +1,5 @@
-hash: 0940007fffad1aa259ddfc3d5f8383e33c7e3dd6d0e9e830d0c27dd280b79675
-updated: 2016-05-12T19:27:22.828403+03:00
+hash: ee4fe3bc9735b931694b0116f25a8cb05658d7d2bfa7e0cd0dcf1752388a5727
+updated: 2016-05-28T21:31:12.484709935+03:00
 imports:
 - name: github.com/beorn7/perks
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
@@ -10,7 +10,7 @@ imports:
 - name: github.com/BurntSushi/toml
   version: f0aeabca5a127c4078abb8c8d64298b147264b55
 - name: github.com/golang/protobuf
-  version: 7cc19b78d562895b13596ddce7aafb59dd789318
+  version: 9e6977f30c91c78396e719e164e57f9287fff42c
   subpackages:
   - proto
 - name: github.com/mattn/go-colorable
@@ -28,7 +28,7 @@ imports:
 - name: github.com/nsqio/go-nsq
   version: 642a3f9935f12cb3b747294318d730f56f4c34b4
 - name: github.com/prometheus/client_golang
-  version: 90c15b5efa0dc32a7d259234e02ac9a99e6d3b82
+  version: 82a2759dc8465e2227a11f43d219c1c950112054
   subpackages:
   - prometheus
 - name: github.com/prometheus/client_model
@@ -36,7 +36,7 @@ imports:
   subpackages:
   - go
 - name: github.com/prometheus/common
-  version: dd586c1c5abb0be59e60f942c22af711a2008cb4
+  version: a6ab08426bb262e2d190097751f5cfd1cfdfd17d
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
@@ -49,17 +49,17 @@ imports:
   - certificate
   - payload
 - name: golang.org/x/crypto
-  version: 1e61df8d9ea476e2e1504cd9a32b40280c7c6c7e
+  version: 5bcd134fee4dd1475da17714aac19c0aa0142e2f
   subpackages:
   - pkcs12
   - pkcs12/internal/rc2
 - name: golang.org/x/net
-  version: 96dbb961a39ddccf16860cdd355bfa639c497f23
+  version: 6acef71eb69611914f7a30939ea9f6e194c78172
   subpackages:
   - http2
   - http2/hpack
 - name: golang.org/x/sys
-  version: e82cb4d7dffc35bcec7bc8bf9e402377e0ecf3f4
+  version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
   subpackages:
   - unix
 - name: gopkg.in/inconshreveable/log15.v2
