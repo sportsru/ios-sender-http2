@@ -590,14 +590,7 @@ func parseDataFrame(fh FrameHeader, payload []byte) (Frame, error) {
 	return f, nil
 }
 
-var (
-	errStreamID    = errors.New("invalid stream ID")
-	errDepStreamID = errors.New("invalid dependent stream ID")
-)
-
-func validStreamIDOrZero(streamID uint32) bool {
-	return streamID&(1<<31) == 0
-}
+var errStreamID = errors.New("invalid streamid")
 
 func validStreamID(streamID uint32) bool {
 	return streamID != 0 && streamID&(1<<31) == 0
@@ -984,8 +977,8 @@ func (f *Framer) WriteHeaders(p HeadersFrameParam) error {
 	}
 	if !p.Priority.IsZero() {
 		v := p.Priority.StreamDep
-		if !validStreamIDOrZero(v) && !f.AllowIllegalWrites {
-			return errDepStreamID
+		if !validStreamID(v) && !f.AllowIllegalWrites {
+			return errors.New("invalid dependent stream id")
 		}
 		if p.Priority.Exclusive {
 			v |= 1 << 31
@@ -1052,9 +1045,6 @@ func parsePriorityFrame(fh FrameHeader, payload []byte) (Frame, error) {
 func (f *Framer) WritePriority(streamID uint32, p PriorityParam) error {
 	if !validStreamID(streamID) && !f.AllowIllegalWrites {
 		return errStreamID
-	}
-	if !validStreamIDOrZero(p.StreamDep) {
-		return errDepStreamID
 	}
 	f.startWrite(FramePriority, 0, streamID)
 	v := p.StreamDep

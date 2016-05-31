@@ -30,20 +30,14 @@ func Do(ctx context.Context, client *http.Client, req *http.Request) (*http.Resp
 		client = http.DefaultClient
 	}
 
-	// TODO(djd): Respect any existing value of req.Cancel.
-	cancel := make(chan struct{})
-	req.Cancel = cancel
+	// Request cancelation changed in Go 1.5, see cancelreq.go and cancelreq_go14.go.
+	cancel := canceler(client, req)
 
 	type responseAndError struct {
 		resp *http.Response
 		err  error
 	}
 	result := make(chan responseAndError, 1)
-
-	// Make local copies of test hooks closed over by goroutines below.
-	// Prevents data races in tests.
-	testHookDoReturned := testHookDoReturned
-	testHookDidBodyClose := testHookDidBodyClose
 
 	go func() {
 		resp, err := client.Do(req)
@@ -56,7 +50,7 @@ func Do(ctx context.Context, client *http.Client, req *http.Request) (*http.Resp
 	select {
 	case <-ctx.Done():
 		testHookContextDoneBeforeHeaders()
-		close(cancel)
+		cancel()
 		// Clean up after the goroutine calling client.Do:
 		go func() {
 			if r := <-result; r.resp != nil {
@@ -77,7 +71,7 @@ func Do(ctx context.Context, client *http.Client, req *http.Request) (*http.Resp
 	go func() {
 		select {
 		case <-ctx.Done():
-			close(cancel)
+			cancel()
 		case <-c:
 			// The response's Body is closed.
 		}

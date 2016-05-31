@@ -195,21 +195,17 @@ type clientStream struct {
 }
 
 // awaitRequestCancel runs in its own goroutine and waits for the user
-// to cancel a RoundTrip request, its context to expire, or for the
-// request to be done (any way it might be removed from the cc.streams
-// map: peer reset, successful completion, TCP connection breakage,
-// etc)
-func (cs *clientStream) awaitRequestCancel(req *http.Request) {
-	ctx := reqContext(req)
-	if req.Cancel == nil && ctx.Done() == nil {
+// to either cancel a RoundTrip request (using the provided
+// Request.Cancel channel), or for the request to be done (any way it
+// might be removed from the cc.streams map: peer reset, successful
+// completion, TCP connection breakage, etc)
+func (cs *clientStream) awaitRequestCancel(cancel <-chan struct{}) {
+	if cancel == nil {
 		return
 	}
 	select {
-	case <-req.Cancel:
+	case <-cancel:
 		cs.bufPipe.CloseWithError(errRequestCanceled)
-		cs.cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-	case <-ctx.Done():
-		cs.bufPipe.CloseWithError(ctx.Err())
 		cs.cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
 	case <-cs.done:
 	}
@@ -422,8 +418,8 @@ func (t *Transport) NewClientConn(c net.Conn) (*ClientConn, error) {
 	}
 
 	initialSettings := []Setting{
-		{ID: SettingEnablePush, Val: 0},
-		{ID: SettingInitialWindowSize, Val: transportDefaultStreamFlow},
+		Setting{ID: SettingEnablePush, Val: 0},
+		Setting{ID: SettingInitialWindowSize, Val: transportDefaultStreamFlow},
 	}
 	if max := t.maxHeaderListSize(); max != 0 {
 		initialSettings = append(initialSettings, Setting{ID: SettingMaxHeaderListSize, Val: max})
@@ -687,8 +683,8 @@ func (cc *ClientConn) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	readLoopResCh := cs.resc
+	requestCanceledCh := requestCancel(req)
 	bodyWritten := false
-	ctx := reqContext(req)
 
 	for {
 		select {
@@ -721,15 +717,7 @@ func (cc *ClientConn) RoundTrip(req *http.Request) (*http.Response, error) {
 				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
 			}
 			return nil, errTimeout
-		case <-ctx.Done():
-			cc.forgetStreamID(cs.ID)
-			if !hasBody || bodyWritten {
-				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-			} else {
-				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
-			}
-			return nil, ctx.Err()
-		case <-req.Cancel:
+		case <-requestCanceledCh:
 			cc.forgetStreamID(cs.ID)
 			if !hasBody || bodyWritten {
 				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
@@ -957,11 +945,14 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 			// Host is :authority, already sent.
 			// Content-Length is automatic, set below.
 			continue
-		case "connection", "proxy-connection", "transfer-encoding", "upgrade", "keep-alive":
+		case "connection", "proxy-connection", "transfer-encoding", "upgrade":
 			// Per 8.1.2.2 Connection-Specific Header
 			// Fields, don't send connection-specific
-			// fields. We have already checked if any
-			// are error-worthy so just ignore the rest.
+			// fields. We deal with these earlier in
+			// RoundTrip, deciding whether they're
+			// error-worthy, but we don't want to mutate
+			// the user's *Request so at this point, just
+			// skip over them at this point.
 			continue
 		case "user-agent":
 			// Match Go's http1 behavior: at most one
@@ -1272,8 +1263,7 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 	}
 
 	streamEnded := f.StreamEnded()
-	isHead := cs.req.Method == "HEAD"
-	if !streamEnded || isHead {
+	if !streamEnded || cs.req.Method == "HEAD" {
 		res.ContentLength = -1
 		if clens := res.Header["Content-Length"]; len(clens) == 1 {
 			if clen64, err := strconv.ParseInt(clens[0], 10, 64); err == nil {
@@ -1288,7 +1278,7 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 		}
 	}
 
-	if streamEnded || isHead {
+	if streamEnded {
 		res.Body = noBody
 		return res, nil
 	}
@@ -1297,14 +1287,13 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 	cs.bufPipe = pipe{b: buf}
 	cs.bytesRemain = res.ContentLength
 	res.Body = transportResponseBody{cs}
-	go cs.awaitRequestCancel(cs.req)
+	go cs.awaitRequestCancel(requestCancel(cs.req))
 
 	if cs.requestedGzip && res.Header.Get("Content-Encoding") == "gzip" {
 		res.Header.Del("Content-Encoding")
 		res.Header.Del("Content-Length")
 		res.ContentLength = -1
 		res.Body = &gzipReader{body: res.Body}
-		setResponseUncompressed(res)
 	}
 	return res, nil
 }
