@@ -42,6 +42,8 @@ type extraField struct {
 	EventID int32 `json:"event_id"`
 	SportID int32 `json:"sport_id"`
 	Type    string
+	TTL     int32 `json:"ttl"`
+	EventTs int32 `json:"event_timestamp"`
 }
 
 type payloadExtraField struct {
@@ -134,9 +136,9 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 
 	// Check TTL
 	nowUnix := time.Now().UTC().Unix()
-	jTs := j.DbRes.Timestamp
-	delta := nowUnix - (jTs + h.ProducerTTL)
-	if delta > 0 {
+	jTs := int64(j.Extra.EventTs + j.Extra.TTL)
+	delta := (jTs + h.ProducerTTL) - nowUnix
+	if delta <= 0 {
 		m.Finish()
 
 		pushRes.State = "ttl_is_over"
@@ -166,6 +168,7 @@ func (h *Hub) sendMessage(m *nsq.Message) (*PushResult, error) {
 	msgCtx = append(msgCtx, []interface{}{
 		"seconds_left", delta,
 		"payload", string(payJSON),
+		"expiration", notification.Expiration,
 	}...)
 
 	// TODO: refactor this mess
